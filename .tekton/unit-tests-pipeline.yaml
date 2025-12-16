@@ -64,9 +64,9 @@ spec:
               volumeMounts:
               - name: source
                 mountPath: /source
-              - name: trusted-ca
-                mountPath: /mnt/trusted-ca
-                readOnly: true
+              # - name: trusted-ca
+              #   mountPath: /mnt/trusted-ca
+              #   readOnly: true
             - name: run-tests
               # Do not update this image reference, buildah > 1.40 has a change that impacts buildah in podman
               # https://github.com/containers/buildah/issues/6158
@@ -74,6 +74,9 @@ spec:
               script: |
                 #!/bin/bash
                 set -ex
+                ls -l
+                echo
+                ls /source
                 cd /source
                 go test ./pkg/...
               volumeMounts:
