@@ -31,7 +31,7 @@ spec:
               git config --global --add safe.directory /source
 
               cd /source
-              git checkout "$git_sha"
+              git checkout "$git_revision"
             volumeMounts:
             - name: source
               mountPath: /source
