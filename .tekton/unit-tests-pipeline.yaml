@@ -1,86 +1,56 @@
-kind: PipelineRun
+kind: Pipeline
 apiVersion: tekton.dev/v1
 metadata:
-  name: unit-tests
+  name: konflux-build-cli-unit-tests
 spec:
-  taskRunSpecs:
-  - pipelineTaskName: run-unit-tests
-    stepSpecs:
-      - name: run-tests
-        computeResources:
-          requests:
-            cpu: 2
-            memory: 1Gi
-          limits:
-            cpu: 2
-            memory: 1Gi
-  pipelineSpec:
-    params:
-      - description: 'Snapshot of the application'
-        name: SNAPSHOT
-        type: string
-    tasks:
-      - name: run-unit-tests
-        params:
-          # This param is automatically set by Konflux when the pipeline is executed
-          # https://konflux.pages.redhat.com/docs/users/testing/integration/creating.html#data-injected-into-the-pipelinerun-of-the-integration-test
-          - name: SNAPSHOT
-            value: "$(params.SNAPSHOT)"
-        taskSpec:
-          volumes:
-          - name: source
-            emptyDir: {}
-            # Inject the CA since we're cloning from Gitlab.cee
-          # - name: trusted-ca
-          #   configMap:
-          #     name: trusted-ca
-          #     items:
-          #       - key: ca-bundle.crt
-          #         path: ca-bundle.crt
-          #     optional: true
-          steps:
-            - name: clone
-              image: registry.access.redhat.com/ubi9-minimal@sha256:6fc28bcb6776e387d7a35a2056d9d2b985dc4e26031e98a2bd35a7137cd6fd71
-              env:
-                - name: PARAM_SNAPSHOT
-                  value: "$(params.SNAPSHOT)"
-              script: |
-                #!/bin/bash
-                set -ex
+  params:
+    - description: 'Snapshot of the application'
+      name: SNAPSHOT
+      type: string
+  tasks:
+    - name: run-unit-tests
+      params:
+        - name: SNAPSHOT
+          value: "$(params.SNAPSHOT)"
+      taskSpec:
+        steps:
+          - name: clone
+            image: quay.io/konflux-ci/task-runner:0.2.0@sha256:ba65585f5c8b0a74dc51590e95961765322427d1d62ccd4eb742ff0442291985
+            env:
+              - name: PARAM_SNAPSHOT
+                value: "$(params.SNAPSHOT)"
+            script: |
+              #!/bin/bash
+              set -ex
 
-                # Install the necessary libraries
-                microdnf -y install jq git
+              jq -c '.components[0]' >component.json <<< "${PARAM_SNAPSHOT}"
+              git_url=$(jq -r '.source.git.url' <component.json)
+              git_revision=$(jq -r '.source.git.revision' <component.json)
 
-                # Treat the snapshot data
-                echo -e "Running tests for the snapshot:\n ${PARAM_SNAPSHOT}"
-                COMPONENT=$(jq -c '.components[0]' <<< "${PARAM_SNAPSHOT}")
+              git clone "$git_url" /source
+              git config --global --add safe.directory /source
 
-                CONTAINER_IMAGE=$(echo "${COMPONENT}" | jq -r '.containerImage')
-                GIT_URL=$(echo "${COMPONENT}" | jq -r '.source.git.url')
-                GIT_SHA=$(echo "${COMPONENT}" | jq -r '.source.git.revision')
-
-                git clone "$GIT_URL" /source
-                git config --global --add safe.directory /source
-              volumeMounts:
-              - name: source
-                mountPath: /source
-              # - name: trusted-ca
-              #   mountPath: /mnt/trusted-ca
-              #   readOnly: true
-            - name: run-tests
-              # Do not update this image reference, buildah > 1.40 has a change that impacts buildah in podman
-              # https://github.com/containers/buildah/issues/6158
-              image: registry.access.redhat.com/ubi9-minimal@sha256:6fc28bcb6776e387d7a35a2056d9d2b985dc4e26031e98a2bd35a7137cd6fd71
-              script: |
-                #!/bin/bash
-                set -ex
-                microdnf install -y skopeo go
-                ls -l
-                echo
-                ls /source
-                cd /source
-                go test ./pkg/...
-              volumeMounts:
-              - name: source
-                mountPath: /source
-
+              cd /source
+              git checkout "$git_sha"
+            volumeMounts:
+            - name: source
+              mountPath: /source
+          - name: run-tests
+            image: registry.access.redhat.com/ubi9-minimal@sha256:6fc28bcb6776e387d7a35a2056d9d2b985dc4e26031e98a2bd35a7137cd6fd71
+            computeResources:
+              requests:
+                memory: 2Gi
+              limits:
+                memory: 2Gi
+            script: |
+              #!/bin/bash
+              set -ex
+              microdnf install -y skopeo go
+              cd /source
+              go test ./pkg/...
+            volumeMounts:
+            - name: source
+              mountPath: /source
+        volumes:
+        - name: source
+          emptyDir: {}
