@@ -21,7 +21,7 @@ Tags can be defined in two ways:
 Both ways can be used together.
 `,
 	Run: func(cmd *cobra.Command, args []string) {
-		l.Logger.Debug("Starting apply-tags")
+		l.Logger.Debug("Starting apply-tags ...")
 		applyTags, err := commands.NewApplyTags(cmd)
 		if err != nil {
 			l.Logger.Fatal(err)
